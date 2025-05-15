@@ -1,6 +1,7 @@
 import os
 import json
 import io
+import base64
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import gspread
@@ -10,7 +11,6 @@ from docx import Document
 
 # —– Configuración de Flask —–
 app = Flask(__name__, template_folder='templates', static_folder='static')
-# Si prefieres, pon aquí tu SECRET_KEY en producción como variable de entorno:
 app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_valor_seguro')
 
 # —– Autenticación básica —–
@@ -38,22 +38,21 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly"
 ]
 
-# Determinar ruta de credenciales
-if 'GOOGLE_SHEETS_JSON' in os.environ:
-    # Si se pasó el JSON en una variable de entorno, lo volcamos en disco
-    creds_dict = json.loads(os.environ['GOOGLE_SHEETS_JSON'])
+# Si te pasamos el JSON en Base64, lo decodificamos y volcamos a disco
+if 'GOOGLE_SHEETS_JSON_B64' in os.environ:
+    raw = base64.b64decode(os.environ['GOOGLE_SHEETS_JSON_B64'])
     CRED_FILE = '/tmp/credentials.json'
-    with open(CRED_FILE, 'w', encoding='utf-8') as f:
-        json.dump(creds_dict, f)
+    with open(CRED_FILE, 'wb') as f:
+        f.write(raw)
 else:
-    # Fallback local (solo en desarrollo)
+    # Fallback local (solo desarrollo)
     BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
     CRED_FILE = os.path.join(BASE_DIR, 'credentials.json')
 
 creds = ServiceAccountCredentials.from_json_keyfile_name(CRED_FILE, SCOPES)
 client = gspread.authorize(creds)
 
-# Reemplaza con tu ID y pestaña reales
+# ID de tu hoja y nombre de la pestaña
 SHEET_ID   = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
 worksheet  = client.open_by_key(SHEET_ID).worksheet('hoja')
 
@@ -83,7 +82,7 @@ def update():
     row_idx = int(request.form.get('row_idx'))
     headers = worksheet.row_values(1)
 
-    # Aplicar actualizaciones (permite campos vacíos)
+    # Guardar cambios (permitir campos vacíos)
     try:
         for col_idx, header in enumerate(headers, start=1):
             new_val = request.form.get(header, '')
@@ -94,7 +93,7 @@ def update():
         record['row_idx'] = row_idx
         return render_template('edit.html', record=record)
 
-    # Exportar a Word si se solicita
+    # Si piden exportar a Word
     if request.form.get('export'):
         record = {h: request.form.get(h, '') for h in headers}
         doc = Document()
