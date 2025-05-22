@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from functools import wraps
-from docx import Document
+from docxtpl import DocxTemplate
 
 # —– Configuración de Flask —–
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -38,23 +38,22 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly"
 ]
 
-# Si te pasamos el JSON en Base64, lo decodificamos y volcamos a disco
+# Decodificar credenciales Base64 si se pasan por ENV
 if 'GOOGLE_SHEETS_JSON_B64' in os.environ:
     raw = base64.b64decode(os.environ['GOOGLE_SHEETS_JSON_B64'])
     CRED_FILE = '/tmp/credentials.json'
     with open(CRED_FILE, 'wb') as f:
         f.write(raw)
 else:
-    # Fallback local (solo desarrollo)
     BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
     CRED_FILE = os.path.join(BASE_DIR, 'credentials.json')
 
 creds = ServiceAccountCredentials.from_json_keyfile_name(CRED_FILE, SCOPES)
 client = gspread.authorize(creds)
 
-# ID de tu hoja y nombre de la pestaña
-SHEET_ID   = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
-worksheet  = client.open_by_key(SHEET_ID).worksheet('hoja')
+# ID de tu hoja y nombre de pestaña
+SHEET_ID  = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
+worksheet = client.open_by_key(SHEET_ID).worksheet('hoja')
 
 # —– Rutas —–
 @app.route('/', methods=['GET', 'POST'])
@@ -65,11 +64,11 @@ def index():
             flash('El campo ID no puede estar vacío.', 'error')
         else:
             try:
-                cell = worksheet.find(search_id, in_column=3)
+                cell    = worksheet.find(search_id, in_column=3)
                 row_idx = cell.row
                 headers = worksheet.row_values(1)
                 values  = worksheet.row_values(row_idx)
-                record = dict(zip(headers, values))
+                record  = dict(zip(headers, values))
                 record['row_idx'] = row_idx
                 return render_template('edit.html', record=record)
             except Exception:
@@ -82,7 +81,7 @@ def update():
     row_idx = int(request.form.get('row_idx'))
     headers = worksheet.row_values(1)
 
-    # Guardar cambios (permitir campos vacíos)
+    # Guardar cambios (permite campos vacíos)
     try:
         for col_idx, header in enumerate(headers, start=1):
             new_val = request.form.get(header, '')
@@ -93,17 +92,24 @@ def update():
         record['row_idx'] = row_idx
         return render_template('edit.html', record=record)
 
-    # Si piden exportar a Word
+    # Exportar a Word con plantilla si se pide
     if request.form.get('export'):
-        record = {h: request.form.get(h, '') for h in headers}
-        doc = Document()
-        doc.add_heading(f'Registro ID {record.get(headers[2])}', level=1)
-        for h in headers:
-            doc.add_paragraph(f'{h}: {record.get(h)}')
+        # 1) Preparar contexto
+        context = { h: request.form.get(h, '') for h in headers }
+
+        # 2) Ruta a tu plantilla .docx
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        tpl_path = os.path.join(BASE_DIR, 'templates_docx', 'itinerary_template.docx')
+
+        # 3) Cargar y renderizar
+        tpl = DocxTemplate(tpl_path)
+        tpl.render(context)
+
+        # 4) Guardar en memoria y enviar
         bio = io.BytesIO()
-        doc.save(bio)
+        tpl.save(bio)
         bio.seek(0)
-        filename = f'Registro_{record.get(headers[2])}.docx'
+        filename = f'Itinerario_{context.get(headers[2], "Reserva")}.docx'
         return send_file(
             bio,
             as_attachment=True,
