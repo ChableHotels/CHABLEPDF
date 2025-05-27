@@ -13,6 +13,7 @@
     </header>
     <div class="form-container">
       <h1>Editar reserva</h1>
+
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <ul class="flashes">
@@ -22,19 +23,45 @@
           </ul>
         {% endif %}
       {% endwith %}
+
       <form method="post" action="{{ url_for('update') }}" class="edit-form">
-        {% for key, value in record.items() if key != 'row_idx' %}
+        {# Recorremos los headers para mantener el orden #}
+        {% for header in headers %}
           <div class="field-group">
-            <label>{{ key }}:</label>
-            <input type="text" name="{{ key }}" value="{{ value }}" placeholder="{{ key }}">
+            <label>{{ header }}:</label>
+            {% if allowed is not none and header not in allowed %}
+              {# Campo solo lectura para user limitado #}
+              <input
+                type="text"
+                name="{{ header }}"
+                value="{{ record[header] }}"
+                readonly
+                class="readonly"
+              >
+            {% else %}
+              {# Campo editable #}
+              <input
+                type="text"
+                name="{{ header }}"
+                value="{{ record[header] }}"
+                placeholder="{{ header }}"
+              >
+            {% endif %}
           </div>
         {% endfor %}
+
         <input type="hidden" name="row_idx" value="{{ record.row_idx }}">
+
         <div class="button-group">
           <button type="submit">Guardar cambios</button>
-          <button type="submit" name="export" value="1" class="secondary">Guardar y Word</button>
+          <button type="submit" name="export" value="1" class="secondary">
+            Guardar y exportar Word
+          </button>
         </div>
-        <p class="back-link"><a href="{{ url_for('index') }}">🔙 Buscar otro ID</a></p>
+
+        <p class="back-link">
+          <a href="{{ url_for('index') }}">🔙 Buscar otro ID</a>
+        </p>
       </form>
     </div>
   </div>
