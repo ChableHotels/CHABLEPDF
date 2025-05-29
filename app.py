@@ -2,8 +2,6 @@ import os
 import json
 import io
 import base64
-import unicodedata
-import re
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import gspread
@@ -11,14 +9,29 @@ from oauth2client.service_account import ServiceAccountCredentials
 from functools import wraps
 from docxtpl import DocxTemplate
 
-# —– CONFIGURACIÓN DE FLASK —–
+# —– Configuración de Flask —–
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_valor_seguro')
+app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_clave_segura')
 
-# —– AUTENTICACIÓN BÁSICA —–
+# —– Usuarios y permisos —–
+USERS = {
+    os.environ.get('BASIC_USER',   'admin'):    os.environ.get('BASIC_PASS',   'password'),
+    os.environ.get('BASIC_USER2', 'usuario2'): os.environ.get('BASIC_PASS2', 'pass2')
+}
+
+# Columnas que usuario2 puede editar
+PERMISSIONS = {
+    'usuario2': [
+        'ITINERARIO',
+        'AMENIDAD',
+        'PRE ARRIVAL NOTAS (BORRADOR)',
+        'REGISTRO DE CONTACTO',
+        'Transfer'
+    ]
+}
+
 def check_auth(username, password):
-    return username == os.environ.get('BASIC_USER', 'admin') \
-       and password == os.environ.get('BASIC_PASS', 'password')
+    return USERS.get(username) == password
 
 def authenticate():
     return ('Autorización requerida.'), 401, {
@@ -34,95 +47,124 @@ def requires_auth(f):
         return f(*args, **kwargs)
     return decorated
 
-# —– SLUGIFY PARA ENCABEZADOS —–
-def slugify(value: str) -> str:
-    text = unicodedata.normalize('NFKD', value).encode('ascii','ignore').decode('ascii')
-    text = re.sub(r'[^\w\s-]', '', text).strip().lower()
-    return re.sub(r'[-\s]+', '_', text)
-
-# —– GOOGLE SHEETS SETUP —–
+# —– Google Sheets setup —–
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly"
 ]
 
-# credenciales JSON en Base64 (Elastic Beanstalk env var)
+# Si recibimos JSON en Base64, volcamos a disco
 if 'GOOGLE_SHEETS_JSON_B64' in os.environ:
     raw = base64.b64decode(os.environ['GOOGLE_SHEETS_JSON_B64'])
     CRED_FILE = '/tmp/credentials.json'
     with open(CRED_FILE, 'wb') as f:
         f.write(raw)
 else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
     CRED_FILE = os.path.join(BASE_DIR, 'credentials.json')
 
 creds  = ServiceAccountCredentials.from_json_keyfile_name(CRED_FILE, SCOPES)
 client = gspread.authorize(creds)
 
-# ID y worksheet
+# ID de tu hoja y nombre de pestaña
 SHEET_ID  = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
-ws        = client.open_by_key(SHEET_ID).worksheet('hoja')
+worksheet = client.open_by_key(SHEET_ID).worksheet('hoja')
 
-# Leemos encabezados y generamos slugs
-raw_headers = ws.row_values(1)
-slugged     = [slugify(h) for h in raw_headers]
-header_map  = dict(zip(raw_headers, slugged))
-# Ejemplo: header_map["Viaja con Mascota"] == "viaja_con_mascota"
-
-# —– RUTAS —–
-@app.route('/', methods=['GET','POST'])
+# —– Rutas —–
+@app.route('/', methods=['GET', 'POST'])
 def index():
+    user = None
+    allowed = None
+
     if request.method == 'POST':
-        search_id = request.form.get('search_id','').strip()
+        # chequeamos próximamente autorización básica
+        auth = request.authorization
+        user = auth.username if auth else None
+        allowed = PERMISSIONS.get(user)
+
+        search_id = request.form.get('search_id', '').strip()
         if not search_id:
-            flash('El campo ID no puede estar vacío.','error')
+            flash('El campo ID no puede estar vacío.', 'error')
         else:
             try:
-                cell = ws.find(search_id, in_column=3)
-                row  = cell.row
-                values = ws.row_values(row)
-                record = dict(zip(raw_headers, values))
-                record['row_idx'] = row
-                return render_template('edit.html', record=record)
+                cell    = worksheet.find(search_id, in_column=3)
+                row_idx = cell.row
+                headers = worksheet.row_values(1)
+                values  = worksheet.row_values(row_idx)
+                record  = dict(zip(headers, values))
+                record['row_idx'] = row_idx
+
+                return render_template(
+                    'edit.html',
+                    record=record,
+                    headers=headers,
+                    user=user,
+                    allowed=allowed
+                )
             except Exception:
-                flash('ID no encontrado. Try again.','error')
+                flash('ID no encontrado. Try again.', 'error')
+
     return render_template('index.html')
 
 @app.route('/update', methods=['POST'])
 @requires_auth
 def update():
+    auth  = request.authorization
+    user  = auth.username
+    allowed = PERMISSIONS.get(user)
+
     row_idx = int(request.form.get('row_idx'))
-    # 1) Guardar cambios (permite vacíos)
+    headers = worksheet.row_values(1)
+
+    # — Guardar cambios en Google Sheets —
     try:
-        for col, h in enumerate(raw_headers, start=1):
-            ws.update_cell(row_idx, col, request.form.get(h,''))
+        for col_idx, header in enumerate(headers, start=1):
+            # si hay permisos limitados y la columna NO está permitida, la saltamos
+            if allowed is not None and header not in allowed:
+                continue
+            new_val = request.form.get(header, '')
+            worksheet.update_cell(row_idx, col_idx, new_val)
     except Exception:
-        flash('Error al guardar cambios. Intenta de nuevo.','error')
-        record = {h: request.form.get(h,'') for h in raw_headers}
+        flash('Error al guardar cambios. Intenta de nuevo.', 'error')
+        record = {h: request.form.get(h, '') for h in headers}
         record['row_idx'] = row_idx
-        return render_template('edit.html', record=record)
+        return render_template(
+            'edit.html',
+            record=record,
+            headers=headers,
+            user=user,
+            allowed=allowed
+        )
 
-    # 2) Si piden exportar Word, preparamos contexto con slugs
+    # — Exportar a Word usando plantilla docxtpl —
     if request.form.get('export'):
-        values  = [request.form.get(h,'') for h in raw_headers]
-        context = { header_map[h]: v for h,v in zip(raw_headers, values) }
+        # contexto con variables idénticas a los marcadores del template
+        context = { h: request.form.get(h, '') for h in headers }
 
-        tpl = DocxTemplate('templates_docx/itinerary_template.docx')
-        tpl.render(context)
+        # ruta a tu plantilla .docx
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        tpl_path = os.path.join(
+            BASE_DIR,
+            'templates_docx',
+            'itinerary_template.docx'
+        )
+        doc = DocxTemplate(tpl_path)
+        doc.render(context)
 
         bio = io.BytesIO()
-        tpl.save(bio)
+        doc.save(bio)
         bio.seek(0)
-        fn = f"Itinerary_{context.get('pms_confirm_no','')}.docx"
+
+        filename = f"Itinerary_{context.get('Pms_Confirm_No', row_idx)}.docx"
         return send_file(
             bio,
             as_attachment=True,
-            download_name=fn,
+            download_name=filename,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
 
-    flash('Registro actualizado con éxito.','success')
+    flash('Registro actualizado con éxito.', 'success')
     return redirect(url_for('index'))
 
-if __name__=='__main__':
+if __name__ == '__main__':
     app.run(debug=True)
