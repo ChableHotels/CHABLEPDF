@@ -11,16 +11,15 @@ from docxtpl import DocxTemplate
 
 # —– Configuración de Flask —–
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_valor_seguro')
+app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_clave_segura')
 
 # —– Usuarios y permisos —–
-# Saca credenciales de entorno o usa los valores por defecto
 USERS = {
     os.environ.get('BASIC_USER', 'admin'):    os.environ.get('BASIC_PASS', 'password'),
     os.environ.get('BASIC_USER2', 'usuario2'): os.environ.get('BASIC_PASS2', 'pass2')
 }
 
-# Columnas que usuario2 SÍ puede editar
+# Columnas que usuario2 puede editar
 PERMISSIONS = {
     'usuario2': [
         'Itinerario',
@@ -32,7 +31,7 @@ PERMISSIONS = {
 }
 
 def check_auth(username, password):
-    return username in USERS and USERS[username] == password
+    return USERS.get(username) == password
 
 def authenticate():
     return ('Autorización requerida.'), 401, {
@@ -54,7 +53,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly"
 ]
 
-# Si nos pasan el JSON en Base64 por ENV, lo volcamos a disco
+# Si recibimos JSON en Base64, volcamos a disco
 if 'GOOGLE_SHEETS_JSON_B64' in os.environ:
     raw = base64.b64decode(os.environ['GOOGLE_SHEETS_JSON_B64'])
     CRED_FILE = '/tmp/credentials.json'
@@ -67,9 +66,9 @@ else:
 creds  = ServiceAccountCredentials.from_json_keyfile_name(CRED_FILE, SCOPES)
 client = gspread.authorize(creds)
 
-# ID y pestaña de tu hoja
-SHEET_ID  = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
-worksheet = client.open_by_key(SHEET_ID).worksheet('hoja')
+# ID de tu hoja y nombre de pestaña
+SHEET_ID   = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
+worksheet  = client.open_by_key(SHEET_ID).worksheet('hoja')
 
 # —– Rutas —–
 @app.route('/', methods=['GET', 'POST'])
@@ -77,7 +76,7 @@ def index():
     if request.method == 'POST':
         search_id = request.form.get('search_id', '').strip()
         if not search_id:
-            flash(' El campo ID no puede estar vacío.', 'error')
+            flash('El campo ID no puede estar vacío.', 'error')
         else:
             try:
                 cell    = worksheet.find(search_id, in_column=3)
@@ -87,12 +86,9 @@ def index():
                 record  = dict(zip(headers, values))
                 record['row_idx'] = row_idx
 
-                # Averiguo quién está logueado (solo en post)
-                user = request.authorization.username \
-                       if request.authorization else None
-
-                # Columnas permitidas para este user
+                user    = request.authorization.username if request.authorization else None
                 allowed = PERMISSIONS.get(user, None)
+
                 return render_template('edit.html',
                                        record=record,
                                        headers=headers,
@@ -105,19 +101,15 @@ def index():
 @app.route('/update', methods=['POST'])
 @requires_auth
 def update():
-    auth = request.authorization
-    user = auth.username
-
+    auth    = request.authorization
+    user    = auth.username
     row_idx = int(request.form.get('row_idx'))
     headers = worksheet.row_values(1)
-
-    # Determinar permisos de edición
     allowed = PERMISSIONS.get(user, None)
 
-    # Guardar cambios
+    # — Guardar cambios en Google Sheets —
     try:
         for col_idx, header in enumerate(headers, start=1):
-            # Si hay lista de 'allowed' y este campo NO está en ella, saltar
             if allowed is not None and header not in allowed:
                 continue
             new_val = request.form.get(header, '')
@@ -132,21 +124,24 @@ def update():
                                user=user,
                                allowed=allowed)
 
-    # Si piden exportar a Word, usamos docxtpl
+    # — Exportar a Word usando plantilla docxtpl —
     if request.form.get('export'):
+        # Cargamos contexto: variables tal cual aparecen en el template
         context = { h: request.form.get(h, '') for h in headers }
 
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        tpl_path = os.path.join(BASE_DIR,
-                                'templates_docx',
-                                'itinerary_templatess.docx')
-        tpl = DocxTemplate(tpl_path)
-        tpl.render(context)
+        # Ruta a tu plantilla .docx
+        BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+        tpl_path     = os.path.join(BASE_DIR,
+                                    'templates_docx',
+                                    'itinerary_template.docx')
+        doc          = DocxTemplate(tpl_path)
+        doc.render(context)
 
         bio = io.BytesIO()
-        tpl.save(bio)
+        doc.save(bio)
         bio.seek(0)
-        filename = f'Itinerario_{context.get(headers[2], "Reserva")}.docx'
+
+        filename = f"Itinerary_{context.get('ID Reserva', row_idx)}.docx"
         return send_file(
             bio,
             as_attachment=True,
