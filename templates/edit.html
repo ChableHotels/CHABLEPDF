@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Editar Reserva</title>
+  <title>Editar reserva</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="wrapper">
     <header class="site-header">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chable Hotels" class="logo">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chablé Hotels" class="logo">
     </header>
     <div class="form-container">
       <h1>Editar reserva</h1>
@@ -25,31 +25,20 @@
       {% endwith %}
 
       <form method="post" action="{{ url_for('update') }}" class="edit-form">
-        {# Recorremos los headers para mantener el orden #}
-        {% for header in headers %}
+        {% for key, value in record.items() if key != 'row_idx' %}
           <div class="field-group">
-            <label>{{ header }}:</label>
-            {% if allowed is not none and header not in allowed %}
-              {# Campo solo lectura para user limitado #}
-              <input
-                type="text"
-                name="{{ header }}"
-                value="{{ record[header] }}"
-                readonly
-                class="readonly"
-              >
+            <label>{{ key }}:</label>
+            {#
+              Si el usuario (variable “user”) NO está en PERMISSIONS para esta cabecera,
+              entonces el input sale readonly.
+            #}
+            {% if allowed is not none and key not in allowed %}
+              <input type="text" name="{{ key }}" value="{{ value }}" readonly>
             {% else %}
-              {# Campo editable #}
-              <input
-                type="text"
-                name="{{ header }}"
-                value="{{ record[header] }}"
-                placeholder="{{ header }}"
-              >
+              <input type="text" name="{{ key }}" value="{{ value }}">
             {% endif %}
           </div>
         {% endfor %}
-
         <input type="hidden" name="row_idx" value="{{ record.row_idx }}">
 
         <div class="button-group">
@@ -58,11 +47,11 @@
             Guardar y exportar Word
           </button>
         </div>
-
         <p class="back-link">
           <a href="{{ url_for('index') }}">🔙 Buscar otro ID</a>
         </p>
       </form>
+
     </div>
   </div>
 </body>
