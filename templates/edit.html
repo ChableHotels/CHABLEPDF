@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Editar reserva</title>
+  <title>Editar Reserva</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -25,33 +25,31 @@
       {% endwith %}
 
       <form method="post" action="{{ url_for('update') }}" class="edit-form">
+        {# Iteramos sobre cada cabecera y su valor #}
         {% for key, value in record.items() if key != 'row_idx' %}
           <div class="field-group">
             <label>{{ key }}:</label>
-            {#
-              Si el usuario (variable “user”) NO está en PERMISSIONS para esta cabecera,
-              entonces el input sale readonly.
-            #}
+            {# Si el usuario tiene permisos limitados (variable “allowed”) y la cabecera NO está en esa lista, ponemos readonly #}
             {% if allowed is not none and key not in allowed %}
-              <input type="text" name="{{ key }}" value="{{ value }}" readonly>
+              <input type="text" name="{{ key }}" value="{{ value }}" readonly class="readonly-field">
             {% else %}
               <input type="text" name="{{ key }}" value="{{ value }}">
             {% endif %}
           </div>
         {% endfor %}
+
+        {# Campo oculto con el índice de fila #}
         <input type="hidden" name="row_idx" value="{{ record.row_idx }}">
 
         <div class="button-group">
           <button type="submit">Guardar cambios</button>
-          <button type="submit" name="export" value="1" class="secondary">
-            Guardar y exportar Word
-          </button>
+          <button type="submit" name="export" value="1" class="secondary">Guardar y Exportar Word</button>
         </div>
+
         <p class="back-link">
           <a href="{{ url_for('index') }}">🔙 Buscar otro ID</a>
         </p>
       </form>
-
     </div>
   </div>
 </body>

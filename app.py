@@ -2,37 +2,25 @@ import os
 import json
 import io
 import base64
-import re
+import unicodedata
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from functools import wraps
 from docxtpl import DocxTemplate
-from unidecode import unidecode
-
-# —– Helper: Normalizar cabeceras a claves válidas para docxtpl —–
-def normalize(header: str) -> str:
-    """
-    Convierte una cabecera como "CSV Guest NM" o
-    "PRE ARRIVAL NOTAS (BORRADOR)" en un identificador tipo
-    "csv_guest_nm" o "pre_arrival_notas_borrador".
-    """
-    h = header.strip()
-    h = unidecode(h)                       # quita acentos
-    h = h.lower()                          # minúsculas
-    h = re.sub(r'[^a-z0-9]+', '_', h)      # caracteres no alfanum → '_'
-    return h.strip('_')                    # quita '_' al inicio/final
 
 # —– Configuración de Flask —–
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_valor_segura')
+app.secret_key = os.environ.get('SECRET_KEY', 'cambia_esto_por_un_clave_segura')
 
 # —– Usuarios y permisos —–
 USERS = {
     os.environ.get('BASIC_USER',   'admin'):    os.environ.get('BASIC_PASS',   'password'),
-    os.environ.get('BASIC_USER2', 'usuario2'): os.environ.get('BASIC_PASS2', 'pass2'),
+    os.environ.get('BASIC_USER2', 'usuario2'): os.environ.get('BASIC_PASS2', 'pass2')
 }
-# Columnas que “usuario2” puede editar (ortografía EXACTA de la cabecera en Google Sheets)
+
+# Columnas que usuario2 puede editar
 PERMISSIONS = {
     'usuario2': [
         'ITINERARIO',
@@ -65,6 +53,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly"
 ]
+
+# Si recibimos JSON en Base64, volcamos a disco
 if 'GOOGLE_SHEETS_JSON_B64' in os.environ:
     raw = base64.b64decode(os.environ['GOOGLE_SHEETS_JSON_B64'])
     CRED_FILE = '/tmp/credentials.json'
@@ -77,21 +67,40 @@ else:
 creds  = ServiceAccountCredentials.from_json_keyfile_name(CRED_FILE, SCOPES)
 client = gspread.authorize(creds)
 
-# —– ID de tu hoja y worksheet —–
-SHEET_ID  = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
-worksheet = client.open_by_key(SHEET_ID).worksheet('hoja')
+# ID de tu hoja y nombre de pestaña
+SHEET_ID   = '1LDhajDpQTzi0RLw8BXLTzmA1m9yRlTX_SrxC9aKLKYg'
+worksheet  = client.open_by_key(SHEET_ID).worksheet('hoja')
+
+
+# —– Función auxiliar: normaliza una cadena de texto para que sirva como clave —–
+def normalize_string(s: str) -> str:
+    """
+    1) convierte a minúsculas
+    2) elimina acentos
+    3) sustituye cualquier carácter no alfanumérico (incluyendo espacios) por '_'
+    4) quita múltiples guiones bajos consecutivos
+    """
+    # 1) a minúsculas
+    s = s.lower()
+    # 2) eliminar acentos y signos diacríticos
+    s = ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+    )
+    # 3) reemplazar cualquier cosa que no sea letra o número por guión bajo
+    import re
+    s = re.sub(r'[^a-z0-9]', '_', s)
+    # 4) colapsar guiones bajos repetidos a uno solo
+    s = re.sub(r'__+', '_', s)
+    # 5) quitar guiones bajos al principio o final
+    s = s.strip('_')
+    return s
+
 
 # —– Rutas —–
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    user    = None
-    allowed = None
-
     if request.method == 'POST':
-        auth    = request.authorization
-        user    = auth.username if auth else None
-        allowed = PERMISSIONS.get(user)
-
         search_id = request.form.get('search_id', '').strip()
         if not search_id:
             flash('El campo ID no puede estar vacío.', 'error')
@@ -104,6 +113,9 @@ def index():
                 record  = dict(zip(headers, values))
                 record['row_idx'] = row_idx
 
+                user    = request.authorization.username if request.authorization else None
+                allowed = PERMISSIONS.get(user, None)
+
                 return render_template(
                     'edit.html',
                     record=record,
@@ -112,16 +124,16 @@ def index():
                     allowed=allowed
                 )
             except Exception:
-                flash('ID no encontrado. Intenta de nuevo.', 'error')
-
+                flash('ID no encontrado. Try again.', 'error')
     return render_template('index.html')
+
 
 @app.route('/update', methods=['POST'])
 @requires_auth
 def update():
     auth    = request.authorization
     user    = auth.username
-    allowed = PERMISSIONS.get(user)
+    allowed = PERMISSIONS.get(user, None)
 
     row_idx = int(request.form.get('row_idx'))
     headers = worksheet.row_values(1)
@@ -129,8 +141,8 @@ def update():
     # — Guardar cambios en Google Sheets —
     try:
         for col_idx, header in enumerate(headers, start=1):
+            # si hay permisos limitados y la columna NO está permitida, la saltamos
             if allowed is not None and header not in allowed:
-                # Usuario2 sólo puede editar las columnas listadas en PERMISSIONS
                 continue
             new_val = request.form.get(header, '')
             worksheet.update_cell(row_idx, col_idx, new_val)
@@ -148,14 +160,14 @@ def update():
 
     # — Exportar a Word usando plantilla docxtpl —
     if request.form.get('export'):
-        # 1) Leemos la fila más reciente (después de actualizarla)
-        raw_values = worksheet.row_values(row_idx)
-        raw_record = dict(zip(headers, raw_values))
+        # Creamos un diccionario “normalizado” de context:
+        #   { 'csv_guest_nm': 'Juan Pérez', 'csv_nights_qty': '3', … }
+        context = {}
+        for h in headers:
+            key_norm = normalize_string(h)  # ej: "Preferencia Café y Lácteos" -> "preferencia_cafe_y_lacteos"
+            context[key_norm] = request.form.get(h, '')
 
-        # 2) Construimos el contexto normalizando cada cabecera
-        context = { normalize(h): raw_record[h] for h in headers }
-
-        # 3) Cargamos y renderizamos plantilla
+        # Ruta a tu plantilla .docx
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         tpl_path = os.path.join(
             BASE_DIR,
@@ -169,18 +181,19 @@ def update():
         doc.save(bio)
         bio.seek(0)
 
-        # Si tu plantilla tiene como variable “{{ pms_confirm_no }}”,
-        # la usamos aquí para el nombre de archivo
-        filename = f"Itinerary_{ context.get('pms_confirm_no', row_idx) }.docx"
+        # Usamos, por ejemplo, el “PMS Confirm No.” como nombre de archivo. Si no existe,
+        # caemos al row_idx:
+        filename = f"Itinerary_{context.get('pms_confirm_no', row_idx)}.docx"
         return send_file(
             bio,
             as_attachment=True,
             download_name=filename,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
 
     flash('Registro actualizado con éxito.', 'success')
     return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     app.run(debug=True)
