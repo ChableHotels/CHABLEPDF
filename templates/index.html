@@ -2,29 +2,31 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Reserva Chable</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="wrapper">
     <header class="site-header">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chable Hotels" class="logo">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chablé" class="logo">
     </header>
     <div class="form-container">
       <h1>Estamos preparando cada detalle<br>para que vivas una experiencia inigualable</h1>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <ul class="flashes">
-            {% for category, msg in messages %}
-              <li class="{{ category }}">{{ msg }}</li>
+            {% for cat,msg in messages %}
+              <li class="{{ cat }}">{{ msg }}</li>
             {% endfor %}
           </ul>
         {% endif %}
       {% endwith %}
-      <form method="post" class="search-form">
-        <label>ID Reserva:</label>
-        <input type="text" name="search_id" placeholder="Ej. ABC123" required>
+      <form method="post" action="{{ url_for('search') }}" class="search-form">
+        <div class="field-group">
+          <label for="search_id">ID Reserva</label>
+          <input id="search_id" type="text" name="search_id" placeholder="Ej. ABC123" required>
+        </div>
         <button type="submit">Buscar</button>
       </form>
     </div>

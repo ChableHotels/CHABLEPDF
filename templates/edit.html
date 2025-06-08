@@ -2,14 +2,14 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Editar Reserva</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="wrapper">
     <header class="site-header">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chablé Hotels" class="logo">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chablé" class="logo">
     </header>
     <div class="form-container">
       <h1>Editar reserva</h1>
@@ -17,39 +17,36 @@
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <ul class="flashes">
-            {% for category, msg in messages %}
-              <li class="{{ category }}">{{ msg }}</li>
+            {% for cat,msg in messages %}
+              <li class="{{ cat }}">{{ msg }}</li>
             {% endfor %}
           </ul>
         {% endif %}
       {% endwith %}
 
       <form method="post" action="{{ url_for('update') }}" class="edit-form">
-        {# Iteramos sobre cada cabecera y su valor #}
         {% for key, value in record.items() if key != 'row_idx' %}
           <div class="field-group">
-            <label>{{ key }}:</label>
-            {# Si el usuario tiene permisos limitados (variable “allowed”) y la cabecera NO está en esa lista, ponemos readonly #}
+            <label for="fld-{{ loop.index }}">{{ display_names.get(key, key) }}</label>
             {% if allowed is not none and key not in allowed %}
-              <input type="text" name="{{ key }}" value="{{ value }}" readonly class="readonly-field">
+              <input id="fld-{{ loop.index }}" type="text" name="{{ key }}" value="{{ value }}" readonly class="readonly">
             {% else %}
-              <input type="text" name="{{ key }}" value="{{ value }}">
+              <input id="fld-{{ loop.index }}" type="text" name="{{ key }}" value="{{ value }}">
             {% endif %}
           </div>
         {% endfor %}
 
-        {# Campo oculto con el índice de fila #}
         <input type="hidden" name="row_idx" value="{{ record.row_idx }}">
 
         <div class="button-group">
           <button type="submit">Guardar cambios</button>
-          <button type="submit" name="export" value="1" class="secondary">Guardar y Exportar Word</button>
+          <button type="submit" name="export" value="1" class="secondary">Exportar Word</button>
         </div>
-
-        <p class="back-link">
-          <a href="{{ url_for('index') }}">🔙 Buscar otro ID</a>
-        </p>
       </form>
+
+      <p class="back-link">
+        <a href="{{ url_for('index') }}">🔙 Buscar otro ID</a>
+      </p>
     </div>
   </div>
 </body>
