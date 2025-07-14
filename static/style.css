@@ -124,6 +124,49 @@ button.secondary:hover { background: #7a746a; }
   text-align: center;
   margin-top: 16px;
 }
+/* — Sections in edit form — */
+.section {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-gap: 1.5rem 2rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  background: #fff;
+}
+.section-header {
+  grid-column: 1 / -1;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+/* — Legend for no-permissions warning — */
+.error-legend {
+  color: #c0392b;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+/* — Asterisco rojo para campos no editables — */
+.not-editable-asterisk {
+  color: #c0392b;
+  margin-left: 4px;
+  font-weight: bold;
+}
+/* — Leyenda de permisos — */
+.error-legend {
+  color: #c0392b;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+/* — Campos rellenados en rojo — */
+.filled {
+  border: 1px solid #c0392b !important;
+  background: #ffecec !important;
+}
 .back-link a {
   color: var(--accent-color);
   text-decoration: none;

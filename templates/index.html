@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Reserva Chablé</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
 </head>
 <body>
   <div class="wrapper">
     <header class="site-header">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chablé" class="logo">
+      <img src="{{ url_for('static',filename='logo.png') }}" alt="Chablé" class="logo">
     </header>
     <div class="form-container">
       <h1>Buscar reserva</h1>
@@ -26,7 +26,12 @@
 
       <form method="post" action="{{ url_for('search') }}" class="search-form">
         <div class="field-group">
-          <label for="Pms_Confirm_No">{{ display_names.get('Pms_Confirm_No','Número de confirmación') }}</label>
+          <label for="ID_Reserva">{{ display_names.get('ID_Reserva','Clave de reservación') }}</label>
+          <input id="ID_Reserva" name="ID_Reserva" type="text"
+                 placeholder="Ej. 12345" value="{{ request.form.ID_Reserva }}">
+        </div>
+        <div class="field-group">
+          <label for="Pms_Confirm_No">{{ display_names.get('Pms_Confirm_No','Clave de Central') }}</label>
           <input id="Pms_Confirm_No" name="Pms_Confirm_No" type="text"
                  placeholder="Ej. ABC123" value="{{ request.form.Pms_Confirm_No }}">
         </div>
@@ -50,39 +55,38 @@
           <input id="Which_Date" name="Which_Date" type="date"
                  value="{{ request.form.Which_Date }}">
         </div>
-
         <button type="submit">Buscar</button>
       </form>
 
       {% if records %}
-        <div class="results-container">
-          <h2>Reservas encontradas</h2>
-          <table class="results-table">
-            <thead>
-              <tr>
-                <th>{{ display_names.get('CSV_Guest_NM','Nombre huésped') }}</th>
-                <th>{{ display_names.get('CSV_Cust_Email','Email') }}</th>
-                <th>{{ display_names.get('Pms_Confirm_No','Confirmación') }}</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in records %}
-              <tr>
-                <td>{{ r.CSV_Guest_NM }}</td>
-                <td>{{ r.CSV_Cust_Email }}</td>
-                <td>{{ r.Pms_Confirm_No }}</td>
-                <td>
-                  <button type="button"
-                    onclick="location.href='{{ url_for('edit_record', row_idx=r.row_idx) }}'">
-                    Editar
-                  </button>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+      <div class="results-container">
+        <h2>Reservas encontradas</h2>
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>{{ display_names.get('CSV_Guest_NM','Nombre huésped') }}</th>
+              <th>{{ display_names.get('CSV_Cust_Email','Email') }}</th>
+              <th>{{ display_names.get('Pms_Confirm_No','Clave de Central') }}</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>{{ r.CSV_Guest_NM }}</td>
+              <td>{{ r.CSV_Cust_Email }}</td>
+              <td>{{ r.Pms_Confirm_No }}</td>
+              <td>
+                <button type="button"
+                        onclick="location.href='{{ url_for('edit_record',row_idx=r.row_idx) }}'">
+                  Editar
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% endif %}
 
     </div>

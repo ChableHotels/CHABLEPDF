@@ -4,43 +4,125 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Editar Reserva</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
 </head>
 <body>
   <div class="wrapper">
     <header class="site-header">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Chablé" class="logo">
+      <img src="{{ url_for('static',filename='logo.png') }}" alt="Chablé" class="logo">
     </header>
     <div class="form-container">
       <h1>Editar reserva</h1>
 
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <ul class="flashes">
-            {% for cat,msg in messages %}
-              <li class="{{ cat }}">{{ msg }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-      {% endwith %}
+      {% if previous_records %}
+      <form method="get"
+            action="{{ url_for('edit_record', row_idx=record.row_idx) }}"
+            style="margin-bottom:1rem;">
+        <label for="source">Selecciona reserva para rellenar faltantes:</label>
+        <select name="source" id="source">
+          {% for pr in previous_records %}
+          <option value="{{ pr.row_idx }}"
+            {% if request.args.source == pr.row_idx|string %}selected{% endif %}>
+            {{ pr.CSV_Cust_Email }} – {{ pr.Which_Date }}
+          </option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="fill" value="1">
+        <button type="submit">Cargar datos faltantes</button>
+        <button type="button" style="margin-left:0.5rem;"
+                onclick="location.href='{{ url_for('index') }}'">
+          Cancelar
+        </button>
+      </form>
+      {% endif %}
 
-      <form method="post" action="{{ url_for('update') }}" class="edit-form">
-        {% for key, value in record.items() if key != 'row_idx' %}
-          <div class="field-group">
-            <label for="fld-{{ loop.index }}">{{ display_names.get(key, key) }}</label>
-            {% if allowed is not none and key not in allowed %}
-              <input id="fld-{{ loop.index }}" type="text" name="{{ key }}" value="{{ value }}" readonly class="readonly">
-            {% else %}
-              <input id="fld-{{ loop.index }}" type="text" name="{{ key }}" value="{{ value }}">
+      {% if allowed is not none %}
+        <p class="error-legend">
+          Los campos con <span class="not-editable-asterisk">*</span> no pueden ser editados
+        </p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('update') }}">
+
+        <div class="section">
+          <div class="section-header">Información de la reserva</div>
+          {% for key in [
+              'Hotel_Long_Nm','Which_Date','Pms_Confirm_No','ID_Reserva',
+              'CSV_Arrival_Date','CSV_Depart_Date','CSV_Nights_Qty','CSV_Status'
+            ] %}
+            {% set v = record.get(key,'') %}
+            {% set cls = [] %}
+            {% if key in filled_fields %}
+              {% set cls = cls + ['filled'] %}
             {% endif %}
-          </div>
-        {% endfor %}
+            {% if allowed is not none and key not in allowed %}
+              {% set cls = cls + ['readonly'] %}
+            {% endif %}
+            <div class="field-group">
+              <label>
+                {{ display_names.get(key,key) }}
+                {% if allowed is not none and key not in allowed %}
+                  <span class="not-editable-asterisk">*</span>
+                {% endif %}
+              </label>
+              <input
+                type="text"
+                name="{{ key }}"
+                value="{{ v }}"
+                class="{{ cls|join(' ') }}"
+                {% if allowed is not none and key not in allowed %} readonly {% endif %}
+              >
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="section">
+          <div class="section-header">Información de huéspedes</div>
+          {% for key in [
+              'CSV_Guest_NM','CSV_Cust_Phone1','CSV_Cust_Email','Opened',
+              'cuantosAcomp','detallesAcompanantes','Hora de Llegada','AM/PM Llegada',
+              'Viaja con Mascota','Detalles Mascota','Motivo del viaje','Origen Vistita',
+              'Restricciones alimenticias','Detalles Alergia','Bebidas y Platillos Preferidos',
+              'Preferencia Café y Lácteos','Hobbies Favoritos','Solicitud Especial',
+              'Comentarios Adicionales','CASITA','TIPO de HUÉSPED','RESERVA',
+              'AMENIDAD/CELEBRACIÓN','ITINERARIO','AMENIDAD','PRE ARRIVAL NOTAS (BORRADOR)',
+              'REGISTRO DE CONTACTO','Transfer','Requiere transfer',
+              'Aerolinea','Numero de vuelo','Aeropuerto de origen',
+              'Aeropuerto destino (salida)','horario del vuelo'
+            ] %}
+            {% set v = record.get(key,'') %}
+            {% set cls = [] %}
+            {% if key in filled_fields %}
+              {% set cls = cls + ['filled'] %}
+            {% endif %}
+            {% if allowed is not none and key not in allowed %}
+              {% set cls = cls + ['readonly'] %}
+            {% endif %}
+            <div class="field-group">
+              <label>
+                {{ display_names.get(key,key) }}
+                {% if allowed is not none and key not in allowed %}
+                  <span class="not-editable-asterisk">*</span>
+                {% endif %}
+              </label>
+              <input
+                type="text"
+                name="{{ key }}"
+                value="{{ v }}"
+                class="{{ cls|join(' ') }}"
+                {% if allowed is not none and key not in allowed %} readonly {% endif %}
+              >
+            </div>
+          {% endfor %}
+        </div>
 
         <input type="hidden" name="row_idx" value="{{ record.row_idx }}">
 
         <div class="button-group">
-          <button type="submit">Guardar cambios</button>
-          <button type="submit" name="export" value="1" class="secondary">Exportar Word</button>
+          <button type="submit" name="save" value="1">Guardar cambios</button>
+          <button type="submit" name="save_export" value="1" class="secondary">
+            Guardar y exportar Word
+          </button>
         </div>
       </form>
 
